@@ -1,0 +1,89 @@
+// BilMimLabA 17 / 18 Guz Hafta 11, Uygulama 5
+// Muhtemel Cozum Ornegi
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "mpi.h"
+
+#define MASTER 0
+#define N 50
+
+
+void printMatrix1D(int *vector, int length, char *name) //prints the vector
+{
+	printf("%s (%dx%d): [", name, 1, length);
+	for (int i = 0; i < length; i++)
+		printf("%d ", vector[i]);
+	printf("]\n");
+}
+
+main(int argc, char **argv)
+{
+	int	rank, size, tag=0, num2search;
+	int countLocal = 0, countGlobal = 0;
+	int myArr[N];
+
+
+	MPI_Status status;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	printf("------------- %d/%d -------------\n", rank, size);
+
+	int *localArray;
+	localArray = (int*)malloc(N / (size - 1) * sizeof(int));
+	
+	if(MASTER == rank)
+	{
+		num2search = 3;
+		for (int i = 0; i < N; i++)
+			myArr[i] = rand() % 5;
+		
+		printMatrix1D(myArr, N, "array");
+
+		for (int to = 1; to < size; to++)
+		{
+			MPI_Send(&num2search, 1, MPI_INT,
+				to, tag, MPI_COMM_WORLD);
+			
+			int offset = (to-1)*(N / (size - 1));
+			MPI_Send(&myArr[offset], N/(size-1), MPI_INT,
+				to, tag, MPI_COMM_WORLD);
+			printf("%d offsetinden %d sayi %d'ye gonderildi\n",
+				offset, (N / (size - 1)), to);
+		}
+		for (int from = 1; from < size; from++)
+		{
+			MPI_Recv(&countLocal, 1, MPI_INT,
+				from, tag, MPI_COMM_WORLD, &status);
+			printf("%d rankindan %d sonucu alindi\n",
+				from, countLocal);
+			countGlobal += countLocal;
+		}
+		printf("countGlobal=%d\n", countGlobal);
+	}
+	else
+	{
+		printf("before num= %d\n", num2search);
+		MPI_Recv(&num2search, 1, MPI_INT,
+			MASTER, tag, MPI_COMM_WORLD,&status);
+		printf("after  num= %d\n", num2search);
+
+		//printMatrix1D(localArray, N / (size - 1), "loc array bef");
+		MPI_Recv(localArray, N / (size - 1), MPI_INT,
+			MASTER, tag, MPI_COMM_WORLD, &status);
+		printMatrix1D(localArray, N / (size - 1), "loc array aft");
+
+		for (int i = 0; i < N / (size - 1); i++)
+			if (num2search == localArray[i])
+				countLocal++;
+		printf("countLocal= %d\n", countLocal);
+
+		MPI_Send(&countLocal, 1, MPI_INT,
+			MASTER, tag, MPI_COMM_WORLD);
+
+	}
+
+	MPI_Finalize();
+}

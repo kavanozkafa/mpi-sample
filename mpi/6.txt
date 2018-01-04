@@ -1,0 +1,147 @@
+// BilMimLabA 17 / 18 Guz Hafta 12, Uygulama 6
+// Muhtemel Cozum Ornegi
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "mpi.h"
+
+#define PERPROCESS 10
+#define MASTER 0
+
+double opSum(double *vector, int length);
+double opAvg(double *vector, int length);
+double opMin(double *vector, int length);
+double opMax(double *vector, int length);
+double operate(double *vector, int length, int ID);
+void printMatrix1D(double *vector, int length, char *name);
+
+main(int argc, char **argv)
+{
+	int rank, size, i, j, opid, to, from, tag = 0;
+	double localResult, globalResult, *localvector, *globalvector, *allLocalResults;
+	
+	MPI_Status status;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	printf("---------------------%d---------------------\n", rank);
+
+	globalvector = (double*)malloc(0*sizeof(double)); //Memory efficiency over processors, this will be used in only MASTER
+	allLocalResults = (double*)malloc(0*sizeof(double)); //Memory efficiency over processors, this will be used in only MASTER
+
+	localvector = (double*)malloc(PERPROCESS*sizeof(double)); //for all processes
+	if (MASTER == rank)//MASTER
+	{
+		globalvector = (double*)malloc(size*PERPROCESS*sizeof(double));
+		allLocalResults = (double*)malloc(size*sizeof(double));
+
+		for (i = 0; i < size*PERPROCESS; i++)
+			globalvector[i] = i;
+
+		printMatrix1D(globalvector, size*PERPROCESS, "Baslangic dizisi");
+
+		opid = -1;
+		while (opid < 0 || opid>3)
+		{
+			printf("Islem IDsini giriniz <0 - Sum> <1 - Min> <2 - Avg> <3 - Max>: ");
+			fflush(stdout);
+			scanf_s("%d", &opid);
+		}
+		printf("Yapilacak islem: %d\n", opid);
+
+		for (to = 1; to < size; to++)
+		{
+			MPI_Send(&opid, 1, MPI_INT, to, tag, MPI_COMM_WORLD);
+		}
+	}
+	else//SLAVE
+	{
+		printf("Before Recv -> opid=%d\n", opid);
+		MPI_Recv(&opid, 1, MPI_INT, MASTER, tag, MPI_COMM_WORLD, &status);
+		printf("After Recv -> opid=%d\n", opid);
+	}
+
+	MPI_Scatter(globalvector, PERPROCESS, MPI_DOUBLE, localvector, PERPROCESS, MPI_DOUBLE, MASTER, MPI_COMM_WORLD);
+	printMatrix1D(localvector, PERPROCESS, "Ana makineden gelen degerler");
+
+	localResult = operate(localvector, PERPROCESS, opid);
+	printf("Yerel operasyon sonucu = %.2lf\n", localResult);
+
+	MPI_Gather(&localResult, 1, MPI_DOUBLE, allLocalResults, 1, MPI_DOUBLE, MASTER, MPI_COMM_WORLD);
+	printf("Yerel sonuclar %d. makinede toplandi.\n", MASTER);
+
+	if (MASTER == rank)
+	{
+		printMatrix1D(allLocalResults, size, "Yerel sonuclar");
+
+		globalResult = operate(allLocalResults, size, opid);
+		printf("Global operasyon sonucu = %.2lf\n", globalResult);
+		free(globalvector);
+		free(allLocalResults);
+	}	
+	
+	free(localvector);
+	printf("--------------------------------------------\n\n", rank);
+
+	MPI_Finalize();
+}
+
+double opSum(double *vector, int length)
+{
+	double result = 0;
+	for (int i = 0; i < length; i++)
+		result += vector[i];
+	return result;
+}
+
+double opAvg(double *vector, int length)
+{
+	double result = 0;
+	for (int i = 0; i < length; i++)
+		result += vector[i];
+	return result / length;
+}
+
+double opMin(double *vector, int length)
+{
+	double result = vector[0];
+	for (int i = 1; i < length; i++)
+		if (vector[i] < result)
+			result = vector[i];
+	return result;
+}
+
+double opMax(double *vector, int length)
+{
+	double result = vector[0];
+	for (int i = 1; i < length; i++)
+		if (vector[i] > result)
+			result = vector[i];
+	return result;
+}
+
+double operate(double *vector, int length, int ID)
+{
+	switch (ID)
+	{
+	case 0:
+		return opSum(vector, length);
+	case 1:
+		return opMin(vector, length);
+	case 2:
+		return opAvg(vector, length);
+	case 3:
+		return opMax(vector, length);
+	default:
+		return -9999;
+	}
+}
+
+void printMatrix1D(double *vector, int length, char *name) //prints the vector
+{
+	printf("%s (%dx%d): [", name, 1, length);
+	for (int i = 0; i < length; i++)
+		printf("%.1lf ", vector[i]);
+	printf("]\n");
+}

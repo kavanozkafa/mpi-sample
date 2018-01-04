@@ -1,0 +1,97 @@
+// BilMimLabA-B 16 / 17 Guz Hafta 13, Uygulama 7
+// Muhtemel Cozum Ornegi
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "mpi.h"
+
+#define MASTER 0
+#define OPSUM 0
+#define OPMIN 1
+#define OPMAX 2
+#define OPAVG 3
+
+void printMatrix1D(double *vector, int length, char *name);
+
+main(int argc, char **argv)
+{
+	int rank, size, opID, opMPICode, perprocess, arraySize;
+	double globalResult, *localVector, *indexResultVector, *globalVector;
+
+	MPI_Status status;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	printf("---------------------%d---------------------\n", rank);
+
+	arraySize = size*size;
+	perprocess = size;
+	
+	globalVector = (double*)malloc(0); //Memory efficiency over processors, this will be used in only MASTER
+	localVector = (double*)malloc(perprocess*sizeof(double)); //for all processes
+	indexResultVector = (double*)malloc(perprocess*sizeof(double));
+
+	if (MASTER == rank)//MASTER
+	{
+		globalVector = (double*)malloc(arraySize*sizeof(double));
+		
+		for (int i = 0; i < arraySize; i++)
+			globalVector[i] = i;
+
+		printMatrix1D(globalVector, arraySize, "Baslangic dizisi");
+
+		opID = -1;
+		while (opID < OPSUM || opID > OPAVG)
+		{
+			printf("Islem IDsini giriniz <%d - Sum> <%d - Min> <%d - Max> <%d - Avg>: ", OPSUM, OPMIN, OPMAX, OPAVG);
+			fflush(stdout);
+			scanf_s("%d", &opID);
+		}
+		printf("Yapilacak islem: %d\n", opID);
+
+		if (OPSUM == opID)
+			opMPICode = MPI_SUM;
+		else if (OPMIN == opID)
+			opMPICode = MPI_MIN;
+		else if (OPMAX == opID)
+			opMPICode = MPI_MAX;
+		else if (OPAVG == opID) //If the operation is avg, then divide the globalResult by size at the end.
+			opMPICode = MPI_SUM;
+	}
+
+	printf("Before Broadcast -> opID=%d\n", opMPICode);
+	MPI_Bcast(&opMPICode, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
+	printf("After  Broadcast -> opID=%d\n", opMPICode);
+
+	MPI_Scatter(globalVector, perprocess, MPI_DOUBLE, localVector, perprocess, MPI_DOUBLE, MASTER, MPI_COMM_WORLD);
+	printMatrix1D(localVector, perprocess, "Ana makineden gelen degerler");
+	
+	MPI_Allreduce(localVector, indexResultVector, perprocess, MPI_DOUBLE, (MPI_Op)opMPICode, MPI_COMM_WORLD);
+	printMatrix1D(indexResultVector, perprocess, "Indis operasyon sonuclari");
+
+	MPI_Reduce(&indexResultVector[rank], &globalResult, 1, MPI_DOUBLE, (MPI_Op)opMPICode, MASTER, MPI_COMM_WORLD);
+
+	if (MASTER == rank)
+	{
+		if (OPAVG == opID)
+			globalResult /= arraySize;
+
+		printf("Global operasyon sonucu = %.2lf\n", globalResult);
+	}
+	free(globalVector);
+	free(indexResultVector);
+	free(localVector);
+	
+	printf("--------------------------------------------\n\n");
+
+	MPI_Finalize();
+}
+
+void printMatrix1D(double *vector, int length, char *name) //prints the double type vector
+{
+	printf("%s (%dx%d): [", name, 1, length);
+	for (int i = 0; i < length; i++)
+		printf("%.1lf ", vector[i]);
+	printf("]\n");
+}
